@@ -20,6 +20,8 @@ def argparser():
     ap = argparse.ArgumentParser()
     ap.add_argument('files', metavar='FILE', nargs='+',
                     help='Input TEES XML files')
+    ap.add_argument('-i', '--ids', metavar='ID[,ID ...]', default=None,
+                    help='Only output documents with given IDs')
     ap.add_argument('-l', '--limit', default=100, type=int,
                     help='Maximum number of documents to process')
     ap.add_argument('-o', '--output-dir', default=DEFAULT_OUTPUT,
@@ -99,6 +101,9 @@ def process_stream(stream, fn, options):
         if count >= options.limit:
             break
         if event == 'end' and element.tag == 'document':
+            if options.ids is not None:
+                if element.attrib.get('origId') not in options.ids:
+                    continue
             document = read_document(element, fn, options)
             write_document(document, fn, options)
             element.clear()
@@ -117,6 +122,8 @@ def process(fn, options):
 
 def main(argv):
     args = argparser().parse_args(argv[1:])
+    if args.ids is not None:
+        args.ids = args.ids.split(',')
     for fn in args.files:
         process(fn, args)
     return 0
