@@ -68,9 +68,9 @@ def write_annotations(sentence, out, base_offset, options):
                 print(d.to_ann(), file=out)
 
 
-def write_sentence(sentence, fn, options):
-    txt_fn = os.path.join(options.output_dir, sentence.id + '.txt')
-    ann_fn = os.path.join(options.output_dir, sentence.id + '.ann')
+def write_sentence(sentence, id_base, fn, options):
+    txt_fn = os.path.join(options.output_dir, id_base + '-' + sentence.id + '.txt')
+    ann_fn = os.path.join(options.output_dir, id_base + '-' + sentence.id + '.ann')
     with open(txt_fn, 'w') as out:
         print(sentence.text, file=out)
     with open(ann_fn, 'w') as out:
@@ -80,10 +80,10 @@ def write_sentence(sentence, fn, options):
 def write_document(document, fn, options):
     if options.sentences:
         for s in document.sentences:
-            write_sentence(s, fn, options)
+            write_sentence(s, document.orig_id, fn, options)
     else:
-        txt_fn = os.path.join(options.output_dir, document.id + '.txt')
-        ann_fn = os.path.join(options.output_dir, document.id + '.ann')
+        txt_fn = os.path.join(options.output_dir, document.orig_id + '.txt')
+        ann_fn = os.path.join(options.output_dir, document.orig_id + '.ann')
         with open(txt_fn, 'w') as out:
             print(document.text, file=out)
         with open(ann_fn, 'w') as out:
