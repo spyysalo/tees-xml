@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import sys
 import gzip
+import errno
 import xml.etree.ElementTree as ET
 
 from logging import warn, error
@@ -26,6 +27,8 @@ def argparser():
                     help='Maximum number of documents to process')
     ap.add_argument('-o', '--output-dir', default=DEFAULT_OUTPUT,
                     help='Output directory (default {})'.format(DEFAULT_OUTPUT))
+    ap.add_argument('-P', '--dir-prefix', type=int, default=None,
+                    help='Add subdirectory with given length document ID prefix')
     ap.add_argument('-s', '--sentences', default=False, action='store_true',
                     help='Output one sentence per file')
     ap.add_argument('-p', '--pairs-only', default=False, action='store_true',
@@ -68,9 +71,33 @@ def write_annotations(sentence, out, base_offset, options):
                 print(d.to_ann(), file=out)
 
 
-def write_sentence(sentence, id_base, fn, options):
-    txt_fn = os.path.join(options.output_dir, id_base + '-' + sentence.id + '.txt')
-    ann_fn = os.path.join(options.output_dir, id_base + '-' + sentence.id + '.ann')
+# https://stackoverflow.com/a/600612
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+
+
+def make_output_directory(doc_id, options):
+    if options.dir_prefix is not None:
+        out_dir = os.path.join(options.output_dir, doc_id[:options.dir_prefix])
+    else:
+        out_dir = options.output_dir
+    if out_dir not in make_output_directory.checked:
+        mkdir_p(out_dir)
+        make_output_directory.checked.add(out_dir)
+    return out_dir
+make_output_directory.checked = set()
+
+
+def write_sentence(sentence, doc_id, fn, options):
+    out_dir = make_output_directory(doc_id, options)
+    txt_fn = os.path.join(out_dir, doc_id + '-' + sentence.id + '.txt')
+    ann_fn = os.path.join(out_dir, doc_id + '-' + sentence.id + '.ann')
     with open(txt_fn, 'w') as out:
         print(sentence.text, file=out)
     with open(ann_fn, 'w') as out:
@@ -82,8 +109,9 @@ def write_document(document, fn, options):
         for s in document.sentences:
             write_sentence(s, document.orig_id, fn, options)
     else:
-        txt_fn = os.path.join(options.output_dir, document.orig_id + '.txt')
-        ann_fn = os.path.join(options.output_dir, document.orig_id + '.ann')
+        out_dir = make_output_directory(document.orig_id, options)
+        txt_fn = os.path.join(out_dir, document.orig_id + '.txt')
+        ann_fn = os.path.join(out_dir, document.orig_id + '.ann')
         with open(txt_fn, 'w') as out:
             print(document.text, file=out)
         with open(ann_fn, 'w') as out:
