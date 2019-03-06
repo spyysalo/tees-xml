@@ -13,8 +13,16 @@ from logging import warn, error
 from teesxml import Document, Sentence, Entity, Token, Dependency
 
 
-DEFAULT_OUTPUT='converted'
+DEFAULT_OUTDIR='converted'
 
+# used with --retype
+TYPE_MAP = {
+    'cel': 'Cell',
+    'che': 'Chemical',
+    'dis': 'Disease',
+    'ggp': 'Gene',
+    'org': 'Organism',
+}
 
 def argparser():
     import argparse
@@ -25,8 +33,8 @@ def argparser():
                     help='Only output documents with given IDs')
     ap.add_argument('-l', '--limit', default=100, type=int,
                     help='Maximum number of documents to process')
-    ap.add_argument('-o', '--output-dir', default=DEFAULT_OUTPUT,
-                    help='Output directory (default {})'.format(DEFAULT_OUTPUT))
+    ap.add_argument('-o', '--output-dir', default=DEFAULT_OUTDIR,
+                    help='Output directory (default {})'.format(DEFAULT_OUTDIR))
     ap.add_argument('-P', '--dir-prefix', type=int, default=None,
                     help='Add subdirectory with given length document ID prefix')
     ap.add_argument('-s', '--sentences', default=False, action='store_true',
@@ -37,6 +45,8 @@ def argparser():
                     help='Do not output dependencies')
     ap.add_argument('-t', '--no-tokens', default=False, action='store_true',
                     help='Do not output tokens (implies --no-deps)')
+    ap.add_argument('-T', '--retype', default=False, action='store_true',
+                    help='Rename types (e.g. "dis" -> "Disease")')
     return ap
 
 
@@ -62,6 +72,8 @@ def process_sentence(sentence, fn, options):
 
 def write_annotations(sentence, out, base_offset, options):
     for e in sentence.entities:
+        if options.retype:
+            e.retype(TYPE_MAP)
         print(e.to_ann(base_offset), file=out)
     if not options.no_tokens:
         for t in sentence.tokens:

@@ -135,6 +135,9 @@ class Span(object):
         self.uid = 'T{}'.format(next_free_idx['T'])
         next_free_idx['T'] += 1
 
+    def retype(self, type_map):
+        self.type = type_map.get(self.type, self.type)
+
     def to_ann(self, base_offset=0):
         start = self.start + base_offset
         end = self.end + base_offset
