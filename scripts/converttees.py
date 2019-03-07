@@ -108,13 +108,11 @@ class FilesystemWriter(WriterBase):
         if directory not in self.known_directories:
             mkdir_p(directory)
             self.known_directories.add(directory)
-        f = None
+        f = open(path, 'w')
         try:
-            f = open(path, 'w')
             yield f
         finally:
-            if f is not None:
-                f.close()
+            f.close()
 
 
 class SQLiteFile(object):
@@ -155,13 +153,11 @@ class SQLiteWriter(WriterBase):
 
     @contextmanager
     def open(self, path):
-        f = None
+        f = SQLiteFile(path, self.db)
         try:
-            f = SQLiteFile(path, self.db)
             yield f
         finally:
-            if f is not None:
-                f.close()
+            f.close()
 
 
 def write_sentence(writer, sentence, doc_id, fn, options):
