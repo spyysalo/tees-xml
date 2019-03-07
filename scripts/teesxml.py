@@ -14,12 +14,6 @@ class FormatError(Exception):
     pass
 
 
-def raise_amended(exception, message):
-    # https://stackoverflow.com/a/6062799
-    raise type(exception), type(exception)(exception.message + ' ' + message),\
-        sys.exc_info()[2]
-
-
 class Document(object):
     def __init__(self, id_, orig_id, text, sentences):
         self.id = id_
@@ -46,8 +40,8 @@ class Document(object):
         for sentence in element.findall('sentence'):
             try:
                 sentences.append(Sentence.from_xml(sentence))
-            except Exception, e:
-                raise_amended(e, 'in document {}'.format(id_))
+            except Exception as e:
+                raise FormatError('in document {}'.format(id_)) from e
         return cls(id_, orig_id, text, sentences)
 
 
@@ -99,26 +93,26 @@ class Sentence(object):
         for entity in element.findall('evex_entity'):
             try:
                 entities.append(Entity.from_xml(entity))
-            except Exception, e:
-                raise_amended(e, 'in sentence {}'.format(id_))
+            except Exception as e:
+                raise FormatError('in sentence {}'.format(id_)) from e
         for analyses in element.findall('analyses'):
             for tokenization in analyses.findall('tokenization'):
                 for token in tokenization.findall('token'):
                     try:
                         tokens.append(Token.from_xml(token))
-                    except Exception, e:
-                        raise_amended(e, 'in sentence {}'.format(id_))
+                    except Exception as e:
+                        raise FormatError('in sentence {}'.format(id_)) from e
             for parse in analyses.findall('parse'):
                 for dependency in parse.findall('dependency'):
                     try:
                         dependencies.append(Dependency.from_xml(dependency))
-                    except Exception, e:
-                        raise_amended(e, 'in sentence {}'.format(id_))
+                    except Exception as e:
+                        raise FormatError('in sentence {}'.format(id_)) from e
                 for phrase in parse.findall('phrase'):
                     try:
                         phrases.append(Phrase.from_xml(phrase))
-                    except Exception, e:
-                        raise_amended(e, 'in sentence {}'.format(id_))
+                    except Exception as e:
+                        raise FormatError('in sentence {}'.format(id_)) from e
         return cls(id_, text, offset, entities, tokens, phrases, dependencies)
 
 
