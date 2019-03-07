@@ -39,8 +39,6 @@ def argparser():
                     help='Add subdirectory with given length document ID prefix')
     ap.add_argument('-s', '--sentences', default=False, action='store_true',
                     help='Output one sentence per file')
-    ap.add_argument('-p', '--pairs-only', default=False, action='store_true',
-                    help='Only output sentences with entity pairs')
     ap.add_argument('-d', '--no-deps', default=False, action='store_true',
                     help='Do not output dependencies')
     ap.add_argument('-t', '--no-tokens', default=False, action='store_true',
@@ -48,26 +46,6 @@ def argparser():
     ap.add_argument('-T', '--retype', default=False, action='store_true',
                     help='Rename types (e.g. "dis" -> "Disease")')
     return ap
-
-
-def process_sentence(sentence, fn, options):
-    s = Sentence.from_xml(sentence)
-    if options.pairs_only and len(s.entities) < 2:
-        return 0
-    txt_fn = os.path.join(options.output_dir, s.id + '.txt')
-    ann_fn = os.path.join(options.output_dir, s.id + '.ann')
-    with open(txt_fn, 'w') as f:
-        print(s.text, file=f)
-    with open(ann_fn, 'w') as f:
-        for e in s.entities:
-            print(e.to_ann(), file=f)
-        if not options.no_tokens:
-            for t in s.tokens:
-                print(t.to_ann(), file=f)
-            if not options.no_deps:
-                for d in s.dependencies:
-                    print(d.to_ann(), file=f)
-    return 1
 
 
 def write_annotations(sentence, out, base_offset, options):
