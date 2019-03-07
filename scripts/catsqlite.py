@@ -8,20 +8,23 @@ from sqlitedict import SqliteDict
 def argparser():
     from argparse import ArgumentParser
     ap = ArgumentParser(description='List values in SQLiteDict DB.')
+    ap.add_argument('-n', '--listname', default=False, action='store_true')
     ap.add_argument('db', nargs='+')
     return ap
 
 
-def list_db(dbname):
+def list_db(dbname, options):
     with SqliteDict(dbname) as db:
-        for k in db:
-            print(db[k])
+        for k, v in db.iteritems():
+            if options.listname:
+                print('==> {} <=='.format(k))
+            print(v)
 
 
 def main(argv):
     args = argparser().parse_args(argv[1:])
     for dbname in args.db:
-        list_db(dbname)
+        list_db(dbname, args)
     return 0
 
 
