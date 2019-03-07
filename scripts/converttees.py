@@ -8,6 +8,8 @@ import gzip
 import errno
 import xml.etree.ElementTree as ET
 
+from contextlib import contextmanager
+from abc import ABC, abstractmethod
 from logging import warn, error
 
 from teesxml import Document, Sentence, Entity, Token, Dependency
@@ -52,13 +54,13 @@ def write_annotations(sentence, out, base_offset, options):
     for e in sentence.entities:
         if options.retype:
             e.retype(TYPE_MAP)
-        print(e.to_ann(base_offset), file=out)
+        out.write(e.to_ann(base_offset) + '\n')
     if not options.no_tokens:
         for t in sentence.tokens:
-            print(t.to_ann(base_offset), file=out)
+            out.write(t.to_ann(base_offset) + '\n')
         if not options.no_deps:
             for d in sentence.dependencies:
-                print(d.to_ann(), file=out)
+                out.write(d.to_ann() + '\n')
 
 
 # https://stackoverflow.com/a/600612
@@ -72,39 +74,62 @@ def mkdir_p(path):
             raise
 
 
-def make_output_directory(doc_id, options):
-    if options.dir_prefix is not None:
-        out_dir = os.path.join(options.output_dir, doc_id[:options.dir_prefix])
+def document_path(doc_id, options):
+    """Return relative path to document from base output directory."""
+    if options.dir_prefix is None:
+        return ''
     else:
-        out_dir = options.output_dir
-    if out_dir not in make_output_directory.checked:
-        mkdir_p(out_dir)
-        make_output_directory.checked.add(out_dir)
-    return out_dir
-make_output_directory.checked = set()
+        return doc_id[:options.dir_prefix]
 
 
-def write_sentence(sentence, doc_id, fn, options):
-    out_dir = make_output_directory(doc_id, options)
-    txt_fn = os.path.join(out_dir, doc_id + '-' + sentence.id + '.txt')
-    ann_fn = os.path.join(out_dir, doc_id + '-' + sentence.id + '.ann')
-    with open(txt_fn, 'w') as out:
-        print(sentence.text, file=out)
-    with open(ann_fn, 'w') as out:
+class WriterBase(ABC):
+    """Abstracts over filesystem and DB for output."""
+    @abstractmethod
+    def open(path):
+        pass
+
+
+class FilesystemWriter(WriterBase):
+    def __init__(self, base_dir=None):
+        self.base_dir = base_dir
+        self.known_directories = set()
+
+    @contextmanager
+    def open(self, path):
+        if self.base_dir is not None and not os.path.isabs(path):
+            path = os.path.join(self.base_dir, path)
+        directory = os.path.dirname(path)
+        if directory not in self.known_directories:
+            mkdir_p(directory)
+            self.known_directories.add(directory)
+        try:
+            f = open(path, 'w')
+            yield f
+        finally:
+            f.close()
+
+
+def write_sentence(writer, sentence, doc_id, fn, options):
+    doc_path = document_path(doc_id, options)
+    txt_fn = os.path.join(doc_path, doc_id + '-' + sentence.id + '.txt')
+    ann_fn = os.path.join(doc_path, doc_id + '-' + sentence.id + '.ann')
+    with writer.open(txt_fn) as out:
+        out.write(sentence.text + '\n')
+    with writer.open(ann_fn) as out:
         write_annotations(sentence, out, 0, options)
 
 
-def write_document(document, fn, options):
+def write_document(writer, document, fn, options):
     if options.sentences:
         for s in document.sentences:
-            write_sentence(s, document.orig_id, fn, options)
+            write_sentence(writer, s, document.orig_id, fn, options)
     else:
-        out_dir = make_output_directory(document.orig_id, options)
-        txt_fn = os.path.join(out_dir, document.orig_id + '.txt')
-        ann_fn = os.path.join(out_dir, document.orig_id + '.ann')
-        with open(txt_fn, 'w') as out:
-            print(document.text, file=out)
-        with open(ann_fn, 'w') as out:
+        doc_path = document_path(document.orig_id, options)
+        txt_fn = os.path.join(doc_path, document.orig_id + '.txt')
+        ann_fn = os.path.join(doc_path, document.orig_id + '.ann')
+        with writer.open(txt_fn) as out:
+            out.write(document.text + '\n')
+        with writer.open(ann_fn) as out:
             for s in document.sentences:
                 write_annotations(s, out, s.start, options)
 
@@ -113,7 +138,7 @@ def read_document(element, fn, options):
     return Document.from_xml(element)
 
 
-def process_stream(stream, fn, options):
+def process_stream(writer, stream, fn, options):
     count = 0
     for event, element in stream:
         if count >= options.limit:
@@ -123,27 +148,28 @@ def process_stream(stream, fn, options):
                 if element.attrib.get('origId') not in options.ids:
                     continue
             document = read_document(element, fn, options)
-            write_document(document, fn, options)
+            write_document(writer, document, fn, options)
             element.clear()
             count += 1
         else:
             pass    # TODO others?
 
 
-def process(fn, options):
+def process(writer, fn, options):
     if not fn.endswith('.gz'):
-        process_stream(ET.iterparse(fn), fn, options)
+        process_stream(writer, ET.iterparse(fn), fn, options)
     else:
         with gzip.GzipFile(fn) as stream:
-            process_stream(ET.iterparse(stream), fn, options)
+            process_stream(writer, ET.iterparse(stream), fn, options)
 
 
 def main(argv):
     args = argparser().parse_args(argv[1:])
+    writer = FilesystemWriter(args.output_dir)
     if args.ids is not None:
         args.ids = args.ids.split(',')
     for fn in args.files:
-        process(fn, args)
+        process(writer, fn, args)
     return 0
 
 
