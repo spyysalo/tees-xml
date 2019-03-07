@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import os
 
 from sqlitedict import SqliteDict
 
@@ -16,7 +17,7 @@ def argparser():
 
 
 def list_db(dbname, options):
-    with SqliteDict(dbname) as db:
+    with SqliteDict(dbname, flag='r') as db:
         if not options.keys:
             for k, v in db.iteritems():
                 if options.showkeys:
@@ -31,6 +32,9 @@ def list_db(dbname, options):
 
 def main(argv):
     args = argparser().parse_args(argv[1:])
+    if not os.path.exists(args.db):
+        print('no such file: {}'.format(args.db), file=sys.stderr)
+        return 1
     list_db(args.db, args)
     return 0
 
