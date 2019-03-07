@@ -8,7 +8,7 @@ BASEDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 SCRIPTDIR="$BASEDIR/scripts"
 
 INXML="$BASEDIR/examples/medline15n0572-s10.xml"
-OUTDIR="$BASEDIR/standoff-output"
+OUTDIR="$BASEDIR/example-output"
 
 mkdir -p "$OUTDIR"
 
