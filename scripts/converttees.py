@@ -160,10 +160,10 @@ class SQLiteWriter(WriterBase):
             f.close()
 
 
-def write_sentence(writer, sentence, doc_id, fn, options):
+def write_sentence(writer, sentence, doc_id, sent_seq, fn, options):
     doc_path = document_path(doc_id, options)
-    txt_fn = os.path.join(doc_path, doc_id + '-' + sentence.id + '.txt')
-    ann_fn = os.path.join(doc_path, doc_id + '-' + sentence.id + '.ann')
+    txt_fn = os.path.join(doc_path, '{}.{}.txt'.format(doc_id, sent_seq))
+    ann_fn = os.path.join(doc_path, '{}.{}.ann'.format(doc_id, sent_seq))
     with writer.open(txt_fn) as out:
         out.write(sentence.text + '\n')
     with writer.open(ann_fn) as out:
@@ -172,8 +172,8 @@ def write_sentence(writer, sentence, doc_id, fn, options):
 
 def write_document(writer, document, fn, options):
     if options.sentences:
-        for s in document.sentences:
-            write_sentence(writer, s, document.orig_id, fn, options)
+        for i, s in enumerate(document.sentences):
+            write_sentence(writer, s, document.orig_id, i, fn, options)
     else:
         doc_path = document_path(document.orig_id, options)
         txt_fn = os.path.join(doc_path, document.orig_id + '.txt')
