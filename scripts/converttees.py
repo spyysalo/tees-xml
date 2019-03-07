@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import print_function
-
 import os
 import sys
 import gzip
@@ -15,7 +13,7 @@ from logging import warn, error
 from teesxml import Document, Sentence, Entity, Token, Dependency
 
 
-DEFAULT_OUTDIR='converted'
+DEFAULT_OUT='converted'
 
 # used with --retype
 TYPE_MAP = {
@@ -33,12 +31,14 @@ def argparser():
                     help='Input TEES XML files')
     ap.add_argument('-i', '--ids', metavar='ID[,ID ...]', default=None,
                     help='Only output documents with given IDs')
-    ap.add_argument('-l', '--limit', default=100, type=int,
+    ap.add_argument('-l', '--limit', default=None, type=int,
                     help='Maximum number of documents to process')
-    ap.add_argument('-o', '--output-dir', default=DEFAULT_OUTDIR,
-                    help='Output directory (default {})'.format(DEFAULT_OUTDIR))
+    ap.add_argument('-o', '--output', default=DEFAULT_OUT,
+                    help='Output dir/db (default {})'.format(DEFAULT_OUT))
     ap.add_argument('-P', '--dir-prefix', type=int, default=None,
                     help='Add subdirectory with given length document ID prefix')
+    ap.add_argument('-D', '--database', default=False, action='store_true',
+                    help='Output to SQLite DB (default filesystem)')
     ap.add_argument('-s', '--sentences', default=False, action='store_true',
                     help='Output one sentence per file')
     ap.add_argument('-d', '--no-deps', default=False, action='store_true',
@@ -94,6 +94,12 @@ class FilesystemWriter(WriterBase):
         self.base_dir = base_dir
         self.known_directories = set()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
     @contextmanager
     def open(self, path):
         if self.base_dir is not None and not os.path.isabs(path):
@@ -102,11 +108,60 @@ class FilesystemWriter(WriterBase):
         if directory not in self.known_directories:
             mkdir_p(directory)
             self.known_directories.add(directory)
+        f = None
         try:
             f = open(path, 'w')
             yield f
         finally:
-            f.close()
+            if f is not None:
+                f.close()
+
+
+class SQLiteFile(object):
+    """Minimal file-like object that writes into SQLite DB"""
+    def __init__(self, key, db):
+        self.key = key
+        self.db = db
+        self.data = []
+
+    def write(self, data):
+        self.data.append(data)
+
+    def flush(self):
+        self.db[self.key] = ''.join(self.data)
+        self.db.commit()
+
+    def close(self):
+        self.flush()
+        self.db = None
+
+
+class SQLiteWriter(WriterBase):
+    def __init__(self, dbname):
+        self.dbname = dbname
+        self.db = None
+
+    def __enter__(self):
+        try:
+            import sqlitedict
+        except ImportError:
+            error('failed to import sqlitedict; try `pip3 install sqlitedict`')
+            raise
+        self.db = sqlitedict.SqliteDict(self.dbname, autocommit=True)
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    @contextmanager
+    def open(self, path):
+        f = None
+        try:
+            f = SQLiteFile(path, self.db)
+            yield f
+        finally:
+            if f is not None:
+                f.close()
 
 
 def write_sentence(writer, sentence, doc_id, fn, options):
@@ -141,7 +196,7 @@ def read_document(element, fn, options):
 def process_stream(writer, stream, fn, options):
     count = 0
     for event, element in stream:
-        if count >= options.limit:
+        if options.limit is not None and count >= options.limit:
             break
         if event == 'end' and element.tag == 'document':
             if options.ids is not None:
@@ -165,11 +220,17 @@ def process(writer, fn, options):
 
 def main(argv):
     args = argparser().parse_args(argv[1:])
-    writer = FilesystemWriter(args.output_dir)
     if args.ids is not None:
         args.ids = args.ids.split(',')
-    for fn in args.files:
-        process(writer, fn, args)
+
+    if not args.database:
+        Writer, name = FilesystemWriter, args.output
+    else:
+        Writer, name = SQLiteWriter, args.output+'.sqlite'
+
+    with Writer(name) as writer:
+        for fn in args.files:
+            process(writer, fn, args)
     return 0
 
 
