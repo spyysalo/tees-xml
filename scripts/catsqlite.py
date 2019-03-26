@@ -4,6 +4,8 @@ import sys
 import os
 import errno
 
+from logging import error
+
 from sqlitedict import SqliteDict
 
 
@@ -70,7 +72,12 @@ def list_db(dbname, options):
                 output(k, v.rstrip('\n'), options)
         else:
             for k in options.keys:
-                output(k, db[k].rstrip('\n'), options)
+                try:
+                    v = db[k]
+                except KeyError as e:
+                    error('no such key: "{}"'.format(k))
+                else:
+                    output(k, v.rstrip('\n'), options)
 
 
 def main(argv):
