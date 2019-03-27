@@ -38,6 +38,8 @@ def argparser():
                     help='Maximum number of documents to process')
     ap.add_argument('-o', '--output', default=DEFAULT_OUT,
                     help='Output dir/db (default {})'.format(DEFAULT_OUT))
+    ap.add_argument('-O', '--no-output', default=False, action='store_true',
+                    help='Suppress output')
     ap.add_argument('-P', '--dir-prefix', type=int, default=None,
                     help='Add subdirectory with given length document ID prefix')
     ap.add_argument('-D', '--database', default=False, action='store_true',
@@ -207,7 +209,8 @@ def process_stream(writer, stream, fn, options):
                 traceback.print_exc()
                 error += 1
             else:
-                write_document(writer, document, fn, options)
+                if not options.no_output:
+                    write_document(writer, document, fn, options)
                 success += 1
             element.clear()
         else:
