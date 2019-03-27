@@ -46,6 +46,8 @@ def argparser():
                     help='Output one sentence per file')
     ap.add_argument('-d', '--no-deps', default=False, action='store_true',
                     help='Do not output dependencies')
+    ap.add_argument('-r', '--recover', default=False, action='store_true',
+                    help='Try to recover from parsing errors')
     ap.add_argument('-t', '--no-tokens', default=False, action='store_true',
                     help='Do not output tokens (implies --no-deps)')
     ap.add_argument('-T', '--retype', default=False, action='store_true',
@@ -189,36 +191,36 @@ def write_document(writer, document, fn, options):
 
 
 def process_stream(writer, stream, fn, options):
-    count = 0
+    success, error = 0, 0
     for event, element in stream:
-        if options.limit is not None and count >= options.limit:
+        if options.limit is not None and success >= options.limit:
             break
         if event == 'end' and element.tag == 'document':
             doc_id = element.attrib.get('origId')
             if options.ids is not None and doc_id not in options.ids:
                 continue
             try:
-                document = Document.from_xml(element)
+                document = Document.from_xml(element, options)
             except FormatError as e:
                 print('Failed to parse document {}:'.format(doc_id),
                       file=sys.stderr)
                 traceback.print_exc()
+                error += 1
             else:
                 write_document(writer, document, fn, options)
-                count += 1
+                success += 1
             element.clear()
         else:
             pass    # TODO others?
-    return count
+    return success, error
 
 
 def process(writer, fn, options):
     if not fn.endswith('.gz'):
-        count = process_stream(writer, ET.iterparse(fn), fn, options)
+        return process_stream(writer, ET.iterparse(fn), fn, options)
     else:
         with gzip.GzipFile(fn) as stream:
-            count = process_stream(writer, ET.iterparse(stream), fn, options)
-    return count
+            return process_stream(writer, ET.iterparse(stream), fn, options)
 
 
 def main(argv):
@@ -233,9 +235,9 @@ def main(argv):
 
     with Writer(name) as writer:
         for fn in args.files:
-            count = process(writer, fn, args)
-            print('Converted {} documents from {}'.format(count, fn),
-                  file=sys.stderr)
+            success, error = process(writer, fn, args)
+            print('Converted {} documents (failed on {}) from {}'.\
+                  format(success, error, fn), file=sys.stderr)
     return 0
 
 

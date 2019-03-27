@@ -4,8 +4,28 @@ import sys
 import xml.etree.ElementTree as ET
 
 from itertools import chain
-from collections import defaultdict
-from logging import info, warn, error
+from collections import defaultdict, Counter
+from logging import info, warning, error
+
+
+def _generate_unique(prefix):
+    """Return unique string with given prefix."""
+    _generate_unique.cache[prefix] += 1
+    return '{}{}'.format(prefix, _generate_unique.cache[prefix])
+_generate_unique.cache = Counter()
+
+
+def get_attrib(element, key, options):
+    try:
+        return element.attrib[key]
+    except KeyError:
+        if not getattr(options, 'recover', False):
+            raise
+        else:
+            val = _generate_unique('MISSING.')
+            warning('recover: replace missing {} in {} with {}'.\
+                    format(key, element.tag, val))
+            return val
 
 
 class FormatError(Exception):
@@ -30,16 +50,22 @@ class Document(object):
             s.assign_uids(next_free_idx)
         
     @classmethod
-    def from_xml(cls, element):
+    def from_xml(cls, element, options=None):
+        recover = getattr(options, 'recover', False)
         id_ = element.attrib['id']
         orig_id = element.attrib['origId']
         text = element.attrib['text']
         sentences = []
         for sentence in element.findall('sentence'):
             try:
-                sentences.append(Sentence.from_xml(sentence))
+                sentences.append(Sentence.from_xml(sentence, options))
             except Exception as e:
-                raise FormatError('in document {}'.format(id_)) from e
+                if recover:
+                    sid = sentence.attrib.get('id')
+                    error('failed to parse sentence {} in {}, ignoring'.\
+                          format(sid, id_))
+                else:
+                    raise FormatError('in document {}'.format(id_)) from e
         return cls(id_, orig_id, text, sentences)
 
 
@@ -83,32 +109,40 @@ class Sentence(object):
         return max_scoring[-1]
             
     @classmethod
-    def from_xml(cls, element):
+    def from_xml(cls, element, options=None):
+        recover = getattr(options, 'recover', False)
         id_ = element.attrib['id']
         text = element.attrib['text']
         offset = element.attrib['charOffset']
         entities, tokens, phrases, dependencies = [], [], [], []
         for entity in element.findall('evex_entity'):
             try:
-                entities.append(Entity.from_xml(entity))
+                entities.append(Entity.from_xml(entity, options))
             except Exception as e:
-                raise FormatError('in sentence {}'.format(id_)) from e
+                if recover:
+                    eid = entity.attrib.get('id')
+                    etype = entity.attrib.get('entity_type')
+                    error('failed to parse "{}" entity ID {} in {}, ignoring'.\
+                          format(etype, eid, id_))
+                else:
+                    raise FormatError('in sentence {}'.format(id_)) from e
         for analyses in element.findall('analyses'):
             for tokenization in analyses.findall('tokenization'):
                 for token in tokenization.findall('token'):
                     try:
-                        tokens.append(Token.from_xml(token))
+                        tokens.append(Token.from_xml(token, options))
                     except Exception as e:
                         raise FormatError('in sentence {}'.format(id_)) from e
             for parse in analyses.findall('parse'):
                 for dependency in parse.findall('dependency'):
                     try:
-                        dependencies.append(Dependency.from_xml(dependency))
+                        dependencies.append(Dependency.from_xml(dependency,
+                                                                options))
                     except Exception as e:
                         raise FormatError('in sentence {}'.format(id_)) from e
                 for phrase in parse.findall('phrase'):
                     try:
-                        phrases.append(Phrase.from_xml(phrase))
+                        phrases.append(Phrase.from_xml(phrase, options))
                     except Exception as e:
                         raise FormatError('in sentence {}'.format(id_)) from e
         return cls(id_, text, offset, entities, tokens, phrases, dependencies)
@@ -146,12 +180,12 @@ class Entity(Span):
         self.orig_id = orig_id
 
     @classmethod
-    def from_xml(cls, element):
-        id_ = element.attrib['id']
+    def from_xml(cls, element, options=None):
+        id_ = get_attrib(element, 'id', options)
         type_ = element.attrib['entity_type']
         offset = element.attrib['charOffset']
         text = element.attrib['text']
-        orig_id = element.attrib['origId']
+        orig_id = get_attrib(element, 'origId', options)
         return cls(id_, type_, offset, text, orig_id)
 
 
@@ -172,7 +206,7 @@ class Token(Span):
             self.id, self.pos, self.offset, self.text, self.head_score)
 
     @classmethod
-    def from_xml(cls, element):
+    def from_xml(cls, element, options=None):
         id_ = element.attrib['id']
         pos = element.attrib['POS']
         offset = element.attrib['charOffset']
@@ -200,7 +234,7 @@ class Dependency(object):
         return '{}\t{} Arg1:{} Arg2:{}'.format(self.uid, self.type, s_id, e_id)
 
     @classmethod
-    def from_xml(cls, element):
+    def from_xml(cls, element, options=None):
         id_ = element.attrib['id']
         start = element.attrib['t1']
         end = element.attrib['t2']
@@ -215,7 +249,7 @@ class Phrase(Span):
         self.type = type_
 
     @classmethod
-    def from_xml(cls, element):
+    def from_xml(cls, element, options=None):
         id_ = element.attrib['id']
         type_ = element.attrib['type']
         offset = element.attrib['charOffset']
