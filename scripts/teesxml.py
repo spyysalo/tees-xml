@@ -39,12 +39,14 @@ def get_norm_curie(norm_type, norm_id):
     """Return CURIE form for EVEX normalization type and id."""
     # Prefixes from https://prefixcommons.org when available
     if norm_type == 'ncbitax_id':
-        return 'taxonomy:{}'.format(norm_id)
+        return 'NCBITaxon:{}'.format(norm_id)
     elif norm_type == 'entrezgene_id':
         return 'ncbigene:{}'.format(norm_id)
     elif norm_type == 'cellline_acc':
         return 'cellosaurus:{}'.format(norm_id)
-    if norm_type == 'cui':
+    elif norm_type == 'cui' and norm_id.startswith('CHEBI:'):
+        return norm_id
+    elif norm_type == 'cui':
         return 'mesh:{}'.format(norm_id)
     else:
         warning('unknown norm type {}'.format(norm_type))
@@ -257,7 +259,8 @@ class Entity(Span):
                 warning('norm_{} without _conf, ignoring'.format(k))
             elif k not in norms:
                 warning('norm_{}_conf without norm_, ignoring'.format(k))
-            elif norms[k] == '0':    # interpret as empty
+            elif ((k == 'entrezgene_id' and norms[k] == '0') or
+                  (k == 'cui' and norms[k] == 'NA')):    # interpret as empty
                 info('skipping norm {}:{}'.format(k, norms[k]))
             else:
                 norm_confs.append((k, norms[k], confs[k]))
