@@ -8,6 +8,11 @@ from collections import defaultdict, Counter
 from logging import info, warning, error
 
 
+# Normalization attribute constants
+NORM_ATTR_PREFIX = 'norm_'
+CONF_ATTR_SUFFIX = '_conf'
+
+
 def _generate_unique(prefix):
     """Return unique string with given prefix."""
     _generate_unique.cache[prefix] += 1
@@ -20,12 +25,30 @@ def get_attrib(element, key, options):
         return element.attrib[key]
     except KeyError:
         if not getattr(options, 'recover', False):
+            error('missing {} in {} (consider --recover)'\
+                  .format(key, element.tag))
             raise
         else:
             val = _generate_unique('MISSING.')
             warning('recover: replace missing {} in {} with {}'.\
                     format(key, element.tag, val))
             return val
+
+
+def get_norm_curie(norm_type, norm_id):
+    """Return CURIE form for EVEX normalization type and id."""
+    # Prefixes from https://prefixcommons.org when available
+    if norm_type == 'ncbitax_id':
+        return 'taxonomy:{}'.format(norm_id)
+    elif norm_type == 'entrezgene_id':
+        return 'ncbigene:{}'.format(norm_id)
+    elif norm_type == 'cellline_acc':
+        return 'cellosaurus:{}'.format(norm_id)
+    if norm_type == 'cui':
+        return 'mesh:{}'.format(norm_id)
+    else:
+        warning('unknown norm type {}'.format(norm_type))
+        return '{}:{}'.format(norm_type, norm_id)
 
 
 class FormatError(Exception):
@@ -172,12 +195,14 @@ class Span(object):
 
 
 class Entity(Span):
-    def __init__(self, id_, type_, offset, text, orig_id):
+    def __init__(self, id_, type_, offset, text, orig_id, norm_id, norm_conf):
         super(Entity, self).__init__(offset)
         self.id = id_
         self.type = type_
         self.text = text
         self.orig_id = orig_id
+        self.norm_id = norm_id
+        self.norm_conf = norm_conf
 
     @classmethod
     def from_xml(cls, element, options=None):
@@ -186,7 +211,39 @@ class Entity(Span):
         offset = element.attrib['charOffset']
         text = element.attrib['text']
         orig_id = get_attrib(element, 'origId', options)
-        return cls(id_, type_, offset, text, orig_id)
+        norm_id, norm_conf = Entity.get_normalization(element)
+        return cls(id_, type_, offset, text, orig_id, norm_id, norm_conf)
+
+    @staticmethod
+    def get_normalization(element):
+        norms, confs = {}, {}
+        for k, v in element.attrib.items():
+            if not k.startswith(NORM_ATTR_PREFIX):
+                continue
+            k = k[len(NORM_ATTR_PREFIX):]
+            if not k.endswith(CONF_ATTR_SUFFIX):
+                norms[k] = v    # normalization
+            else:
+                k = k[:-len(CONF_ATTR_SUFFIX)]
+                confs[k] = v    # confidence
+        # pair up norm and conf values
+        norm_confs = []
+        for k in set(norms.keys()) | set(confs.keys()):
+            if k not in confs:
+                warning('norm_{} without _conf, ignoring'.format(k))
+            elif k not in norms:
+                warning('norm_{}_conf without norm_, ignoring'.format(k))
+            else:
+                norm_confs.append((k, norms[k], confs[k]))
+        if not norm_confs:
+            return None, None
+        else:
+            if len(norm_confs) > 1:
+                warning('more than one norm, only using first: {}'.\
+                        format(norm_confs))
+            norm_type, norm_id, norm_conf = norm_confs[0]
+            norm_curie = get_norm_curie(norm_type, norm_id)
+            return norm_curie, norm_conf
 
 
 class Token(Span):
