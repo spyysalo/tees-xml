@@ -137,7 +137,7 @@ class Sentence(object):
         id_ = element.attrib['id']
         text = element.attrib['text']
         offset = element.attrib['charOffset']
-        entities, tokens, phrases, dependencies = [], [], [], []
+        entities = []
         for entity in element.findall('evex_entity'):
             try:
                 entities.append(Entity.from_xml(entity, options))
@@ -149,6 +149,12 @@ class Sentence(object):
                           format(etype, eid, id_))
                 else:
                     raise FormatError('in sentence {}'.format(id_)) from e
+
+        no_tokens = getattr(options, 'no_tokens', False)
+        if no_tokens:    # no tokens implies no analyses at all
+            return cls(id_, text, offset, entities, [], [], [])
+
+        tokens, phrases, dependencies = [], [], [], []
         for analyses in element.findall('analyses'):
             for tokenization in analyses.findall('tokenization'):
                 for token in tokenization.findall('token'):
@@ -217,7 +223,7 @@ class Entity(Span):
         yield '{}\t{} {} {}\t{}'.format(self.uid, self.type, start, end,
                                         self.text)
         if self.norm_id is not None:
-            yield '{}\tReference {} {}\t{} ({})'.format(
+            yield '{}\tReference {} {}\t{} [confidence:{}]'.format(
                 self.norm_uid, self.uid, self.norm_id, self.text,
                 self.norm_conf)
 
