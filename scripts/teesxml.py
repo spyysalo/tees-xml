@@ -113,7 +113,7 @@ class Sentence(object):
     def assign_uids(self, next_free_idx):
         for i in chain(self.tokens, self.phrases, self.entities,
                        self.dependencies):
-            i.assign_uid(next_free_idx)
+            i.assign_uids(next_free_idx)
 
     def get_token_uid(self, id_):
         return self.token_by_id.get(id_).uid
@@ -180,18 +180,18 @@ class Span(object):
         self.sentence = None
         self.uid = None
 
-    def assign_uid(self, next_free_idx):
+    def assign_uids(self, next_free_idx):
         self.uid = 'T{}'.format(next_free_idx['T'])
         next_free_idx['T'] += 1
 
     def retype(self, type_map):
         self.type = type_map.get(self.type, self.type)
 
-    def to_ann(self, base_offset=0):
+    def to_ann_lines(self, base_offset=0):
         start = self.start + base_offset
         end = self.end + base_offset
-        return '{}\t{} {} {}\t{}'.format(self.uid, self.type, start, end,
-                                         self.text)
+        yield '{}\t{} {} {}\t{}'.format(self.uid, self.type, start, end,
+                                        self.text)
 
 
 class Entity(Span):
@@ -203,6 +203,23 @@ class Entity(Span):
         self.orig_id = orig_id
         self.norm_id = norm_id
         self.norm_conf = norm_conf
+        self.norm_uid = None
+
+    def assign_uids(self, next_free_idx):
+        super().assign_uids(next_free_idx)
+        if self.norm_id is not None:
+            self.norm_uid = 'N{}'.format(next_free_idx['N'])
+            next_free_idx['N'] += 1
+
+    def to_ann_lines(self, base_offset=0):
+        start = self.start + base_offset
+        end = self.end + base_offset
+        yield '{}\t{} {} {}\t{}'.format(self.uid, self.type, start, end,
+                                        self.text)
+        if self.norm_id is not None:
+            yield '{}\tReference {} {}\t{} ({})'.format(
+                self.norm_uid, self.uid, self.norm_id, self.text,
+                self.norm_conf)
 
     @classmethod
     def from_xml(cls, element, options=None):
@@ -217,6 +234,7 @@ class Entity(Span):
     @staticmethod
     def get_normalization(element):
         norms, confs = {}, {}
+        # gather normalization and confidence attributes
         for k, v in element.attrib.items():
             if not k.startswith(NORM_ATTR_PREFIX):
                 continue
@@ -233,6 +251,8 @@ class Entity(Span):
                 warning('norm_{} without _conf, ignoring'.format(k))
             elif k not in norms:
                 warning('norm_{}_conf without norm_, ignoring'.format(k))
+            elif norms[k] == '0':    # interpret as empty
+                info('skipping norm {}:{}'.format(k, norms[k]))
             else:
                 norm_confs.append((k, norms[k], confs[k]))
         if not norm_confs:
@@ -281,14 +301,14 @@ class Dependency(object):
         self.sentence = None
         self.uid = None
 
-    def assign_uid(self, next_free_idx):
+    def assign_uids(self, next_free_idx):
         self.uid = 'R{}'.format(next_free_idx['R'])
         next_free_idx['R'] += 1
 
-    def to_ann(self):
+    def to_ann_lines(self):
         s_id = self.sentence.get_token_uid(self.start)
         e_id = self.sentence.get_token_uid(self.end)
-        return '{}\t{} Arg1:{} Arg2:{}'.format(self.uid, self.type, s_id, e_id)
+        yield '{}\t{} Arg1:{} Arg2:{}'.format(self.uid, self.type, s_id, e_id)
 
     @classmethod
     def from_xml(cls, element, options=None):
