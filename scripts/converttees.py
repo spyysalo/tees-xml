@@ -231,10 +231,13 @@ def main(argv):
     if args.ids is not None:
         args.ids = args.ids.split(',')
 
+    name = args.output
     if not args.database:
-        Writer, name = FilesystemWriter, args.output
+        Writer = FilesystemWriter
     else:
-        Writer, name = SQLiteWriter, args.output+'.sqlite'
+        Writer = SQLiteWriter
+        if not name.endswith('.sqlite'):
+            name = name + '.sqlite'
 
     with Writer(name) as writer:
         for fn in args.files:
