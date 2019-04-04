@@ -57,17 +57,22 @@ def argparser():
     return ap
 
 
+def write_lines(lines, out):
+    for l in lines:
+        out.write(l+'\n')
+
+
 def write_annotations(sentence, out, base_offset, options):
     for e in sentence.entities:
         if options.retype:
             e.retype(TYPE_MAP)
-        out.write(e.to_ann(base_offset) + '\n')
+        write_lines(e.to_ann_lines(base_offset), out)
     if not options.no_tokens:
         for t in sentence.tokens:
-            out.write(t.to_ann(base_offset) + '\n')
+            write_lines(t.to_ann_lines(base_offset), out)
         if not options.no_deps:
             for d in sentence.dependencies:
-                out.write(d.to_ann() + '\n')
+                write_lines(d.to_ann_lines(), out)
 
 
 # https://stackoverflow.com/a/600612

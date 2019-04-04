@@ -8,6 +8,11 @@ from collections import defaultdict, Counter
 from logging import info, warning, error
 
 
+# Normalization attribute constants
+NORM_ATTR_PREFIX = 'norm_'
+CONF_ATTR_SUFFIX = '_conf'
+
+
 def _generate_unique(prefix):
     """Return unique string with given prefix."""
     _generate_unique.cache[prefix] += 1
@@ -20,12 +25,32 @@ def get_attrib(element, key, options):
         return element.attrib[key]
     except KeyError:
         if not getattr(options, 'recover', False):
+            error('missing {} in {} (consider --recover)'\
+                  .format(key, element.tag))
             raise
         else:
             val = _generate_unique('MISSING.')
             warning('recover: replace missing {} in {} with {}'.\
                     format(key, element.tag, val))
             return val
+
+
+def get_norm_curie(norm_type, norm_id):
+    """Return CURIE form for EVEX normalization type and id."""
+    # Prefixes from https://prefixcommons.org when available
+    if norm_type == 'ncbitax_id':
+        return 'NCBITaxon:{}'.format(norm_id)
+    elif norm_type == 'entrezgene_id':
+        return 'ncbigene:{}'.format(norm_id)
+    elif norm_type == 'cellline_acc':
+        return 'cellosaurus:{}'.format(norm_id)
+    elif norm_type == 'cui' and norm_id.startswith('CHEBI:'):
+        return norm_id
+    elif norm_type == 'cui':
+        return 'mesh:{}'.format(norm_id)
+    else:
+        warning('unknown norm type {}'.format(norm_type))
+        return '{}:{}'.format(norm_type, norm_id)
 
 
 class FormatError(Exception):
@@ -90,7 +115,7 @@ class Sentence(object):
     def assign_uids(self, next_free_idx):
         for i in chain(self.tokens, self.phrases, self.entities,
                        self.dependencies):
-            i.assign_uid(next_free_idx)
+            i.assign_uids(next_free_idx)
 
     def get_token_uid(self, id_):
         return self.token_by_id.get(id_).uid
@@ -114,7 +139,7 @@ class Sentence(object):
         id_ = element.attrib['id']
         text = element.attrib['text']
         offset = element.attrib['charOffset']
-        entities, tokens, phrases, dependencies = [], [], [], []
+        entities = []
         for entity in element.findall('evex_entity'):
             try:
                 entities.append(Entity.from_xml(entity, options))
@@ -126,6 +151,12 @@ class Sentence(object):
                           format(etype, eid, id_))
                 else:
                     raise FormatError('in sentence {}'.format(id_)) from e
+
+        no_tokens = getattr(options, 'no_tokens', False)
+        if no_tokens:    # no tokens implies no analyses at all
+            return cls(id_, text, offset, entities, [], [], [])
+
+        tokens, phrases, dependencies = [], [], [], []
         for analyses in element.findall('analyses'):
             for tokenization in analyses.findall('tokenization'):
                 for token in tokenization.findall('token'):
@@ -157,27 +188,46 @@ class Span(object):
         self.sentence = None
         self.uid = None
 
-    def assign_uid(self, next_free_idx):
+    def assign_uids(self, next_free_idx):
         self.uid = 'T{}'.format(next_free_idx['T'])
         next_free_idx['T'] += 1
 
     def retype(self, type_map):
         self.type = type_map.get(self.type, self.type)
 
-    def to_ann(self, base_offset=0):
+    def to_ann_lines(self, base_offset=0):
         start = self.start + base_offset
         end = self.end + base_offset
-        return '{}\t{} {} {}\t{}'.format(self.uid, self.type, start, end,
-                                         self.text)
+        yield '{}\t{} {} {}\t{}'.format(self.uid, self.type, start, end,
+                                        self.text)
 
 
 class Entity(Span):
-    def __init__(self, id_, type_, offset, text, orig_id):
+    def __init__(self, id_, type_, offset, text, orig_id, norm_id, norm_conf):
         super(Entity, self).__init__(offset)
         self.id = id_
         self.type = type_
         self.text = text
         self.orig_id = orig_id
+        self.norm_id = norm_id
+        self.norm_conf = norm_conf
+        self.norm_uid = None
+
+    def assign_uids(self, next_free_idx):
+        super().assign_uids(next_free_idx)
+        if self.norm_id is not None:
+            self.norm_uid = 'N{}'.format(next_free_idx['N'])
+            next_free_idx['N'] += 1
+
+    def to_ann_lines(self, base_offset=0):
+        start = self.start + base_offset
+        end = self.end + base_offset
+        yield '{}\t{} {} {}\t{}'.format(self.uid, self.type, start, end,
+                                        self.text)
+        if self.norm_id is not None:
+            yield '{}\tReference {} {}\t{} [confidence:{}]'.format(
+                self.norm_uid, self.uid, self.norm_id, self.text,
+                self.norm_conf)
 
     @classmethod
     def from_xml(cls, element, options=None):
@@ -186,7 +236,43 @@ class Entity(Span):
         offset = element.attrib['charOffset']
         text = element.attrib['text']
         orig_id = get_attrib(element, 'origId', options)
-        return cls(id_, type_, offset, text, orig_id)
+        norm_id, norm_conf = Entity.get_normalization(element)
+        return cls(id_, type_, offset, text, orig_id, norm_id, norm_conf)
+
+    @staticmethod
+    def get_normalization(element):
+        norms, confs = {}, {}
+        # gather normalization and confidence attributes
+        for k, v in element.attrib.items():
+            if not k.startswith(NORM_ATTR_PREFIX):
+                continue
+            k = k[len(NORM_ATTR_PREFIX):]
+            if not k.endswith(CONF_ATTR_SUFFIX):
+                norms[k] = v    # normalization
+            else:
+                k = k[:-len(CONF_ATTR_SUFFIX)]
+                confs[k] = v    # confidence
+        # pair up norm and conf values
+        norm_confs = []
+        for k in set(norms.keys()) | set(confs.keys()):
+            if k not in confs:
+                warning('norm_{} without _conf, ignoring'.format(k))
+            elif k not in norms:
+                warning('norm_{}_conf without norm_, ignoring'.format(k))
+            elif ((k == 'entrezgene_id' and norms[k] == '0') or
+                  (k == 'cui' and norms[k] == 'NA')):    # interpret as empty
+                info('skipping norm {}:{}'.format(k, norms[k]))
+            else:
+                norm_confs.append((k, norms[k], confs[k]))
+        if not norm_confs:
+            return None, None
+        else:
+            if len(norm_confs) > 1:
+                warning('more than one norm, only using first: {}'.\
+                        format(norm_confs))
+            norm_type, norm_id, norm_conf = norm_confs[0]
+            norm_curie = get_norm_curie(norm_type, norm_id)
+            return norm_curie, norm_conf
 
 
 class Token(Span):
@@ -224,14 +310,14 @@ class Dependency(object):
         self.sentence = None
         self.uid = None
 
-    def assign_uid(self, next_free_idx):
+    def assign_uids(self, next_free_idx):
         self.uid = 'R{}'.format(next_free_idx['R'])
         next_free_idx['R'] += 1
 
-    def to_ann(self):
+    def to_ann_lines(self):
         s_id = self.sentence.get_token_uid(self.start)
         e_id = self.sentence.get_token_uid(self.end)
-        return '{}\t{} Arg1:{} Arg2:{}'.format(self.uid, self.type, s_id, e_id)
+        yield '{}\t{} Arg1:{} Arg2:{}'.format(self.uid, self.type, s_id, e_id)
 
     @classmethod
     def from_xml(cls, element, options=None):
