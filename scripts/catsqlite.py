@@ -87,7 +87,11 @@ def main(argv):
     if not os.path.exists(args.db):
         print('no such file: {}'.format(args.db), file=sys.stderr)
         return 1
-    list_db(args.db, args)
+    try:
+        list_db(args.db, args)
+    except BrokenPipeError:
+        # Suppress exception when used in pipe with e.g. head
+        pass
     return 0
 
 

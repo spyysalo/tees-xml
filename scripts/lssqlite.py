@@ -27,7 +27,11 @@ def main(argv):
         if not os.path.exists(dbname):
             print('no such file: {}'.format(dbname), file=sys.stderr)
             continue
-        list_db(dbname)
+        try:
+            list_db(dbname)
+        except BrokenPipeError:
+            # Suppress exception when used in pipe with e.g. head
+            break
     return 0
 
 
