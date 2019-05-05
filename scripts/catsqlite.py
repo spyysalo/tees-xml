@@ -66,18 +66,20 @@ output.known_directories = set()
 
 
 def list_db(dbname, options):
-    with SqliteDict(dbname, flag='r') as db:
-        if not options.keys:
-            for k, v in db.iteritems():
+    # No context manager (and no close()) as this is read-only and
+    # close() can block for a long time for no apparent reason.
+    db = SqliteDict(dbname, flag='r', autocommit=False)
+    if not options.keys:
+        for k, v in db.iteritems():
+            output(k, v.rstrip('\n'), options)
+    else:
+        for k in options.keys:
+            try:
+                v = db[k]
+            except KeyError as e:
+                error('no such key: "{}"'.format(k))
+            else:
                 output(k, v.rstrip('\n'), options)
-        else:
-            for k in options.keys:
-                try:
-                    v = db[k]
-                except KeyError as e:
-                    error('no such key: "{}"'.format(k))
-                else:
-                    output(k, v.rstrip('\n'), options)
 
 
 def main(argv):

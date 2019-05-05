@@ -14,9 +14,11 @@ def argparser():
 
 
 def list_db(dbname):
-    with SqliteDict(dbname, flag='r') as db:
-        for k in db:
-            print(k)
+    # No context manager (and no close()) as this is read-only and
+    # close() can block for a long time for no apparent reason.
+    db = SqliteDict(dbname, flag='r', autocommit=False)
+    for k in db:
+        print(k)
 
 
 def main(argv):
