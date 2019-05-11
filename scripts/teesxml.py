@@ -153,29 +153,33 @@ class Sentence(object):
                     raise FormatError('in sentence {}'.format(id_)) from e
 
         no_tokens = getattr(options, 'no_tokens', False)
-        if no_tokens:    # no tokens implies no analyses at all
-            return cls(id_, text, offset, entities, [], [], [])
+        no_phrases = not getattr(options, 'phrases', False)
 
-        tokens, phrases, dependencies = [], [], [], []
+        tokens, phrases, dependencies = [], [], []
         for analyses in element.findall('analyses'):
-            for tokenization in analyses.findall('tokenization'):
-                for token in tokenization.findall('token'):
-                    try:
-                        tokens.append(Token.from_xml(token, options))
-                    except Exception as e:
-                        raise FormatError('in sentence {}'.format(id_)) from e
+            if not no_tokens:
+                for tokenization in analyses.findall('tokenization'):
+                    for token in tokenization.findall('token'):
+                        try:
+                            tokens.append(Token.from_xml(token, options))
+                        except Exception as e:
+                            raise FormatError('in sentence {}'.format(id_)) from e
             for parse in analyses.findall('parse'):
-                for dependency in parse.findall('dependency'):
-                    try:
-                        dependencies.append(Dependency.from_xml(dependency,
-                                                                options))
-                    except Exception as e:
-                        raise FormatError('in sentence {}'.format(id_)) from e
-                for phrase in parse.findall('phrase'):
-                    try:
-                        phrases.append(Phrase.from_xml(phrase, options))
-                    except Exception as e:
-                        raise FormatError('in sentence {}'.format(id_)) from e
+                if not no_tokens:    # no tokens implies no dependencies
+                    for dependency in parse.findall('dependency'):
+                        try:
+                            dependencies.append(Dependency.from_xml(dependency,
+                                                                    options))
+                        except Exception as e:
+                            raise FormatError('in sentence {}'.format(id_)) from e
+                if not no_phrases:
+                    for phrase in parse.findall('phrase'):
+                        try:
+                            p = Phrase.from_xml(phrase, options)
+                            p.assign_text(text)
+                            phrases.append(p)
+                        except Exception as e:
+                            raise FormatError('in sentence {}'.format(id_)) from e
         return cls(id_, text, offset, entities, tokens, phrases, dependencies)
 
 
@@ -332,7 +336,11 @@ class Phrase(Span):
     def __init__(self, id_, type_, offset):
         super(Phrase, self).__init__(offset)
         self.id = id_
-        self.type = type_
+        self.type = 'Phrase-{}'.format(type_)
+        self.text = None    # need assign_text
+
+    def assign_text(self, sentence_text):
+        self.text = sentence_text[self.start:self.end]
 
     @classmethod
     def from_xml(cls, element, options=None):

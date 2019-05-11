@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from abc import ABC, abstractmethod
 from logging import warn, error
 
-from teesxml import Document, Sentence, Entity, Token, Dependency
+from teesxml import Document, Sentence, Entity, Token, Phrase, Dependency
 from teesxml import FormatError
 
 
@@ -40,6 +40,8 @@ def argparser():
                     help='Output dir/db (default {})'.format(DEFAULT_OUT))
     ap.add_argument('-O', '--no-output', default=False, action='store_true',
                     help='Suppress output')
+    ap.add_argument('-p', '--phrases', default=False, action='store_true',
+                    help='Ouput phrases')
     ap.add_argument('-P', '--dir-prefix', type=int, default=None,
                     help='Add subdirectory with given length document ID prefix')
     ap.add_argument('-D', '--database', default=False, action='store_true',
@@ -73,6 +75,9 @@ def write_annotations(sentence, out, base_offset, options):
         if not options.no_deps:
             for d in sentence.dependencies:
                 write_lines(d.to_ann_lines(), out)
+    if options.phrases:
+        for p in sentence.phrases:
+            write_lines(p.to_ann_lines(base_offset), out)
 
 
 # https://stackoverflow.com/a/600612
