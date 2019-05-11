@@ -42,6 +42,8 @@ def argparser():
                     help='Suppress output')
     ap.add_argument('-p', '--phrases', default=False, action='store_true',
                     help='Ouput phrases')
+    ap.add_argument('-pt', '--phrase-types', metavar='TYPE[,TYPE...]',
+                    default=None, help='Output phrases of given types')
     ap.add_argument('-P', '--dir-prefix', type=int, default=None,
                     help='Add subdirectory with given length document ID prefix')
     ap.add_argument('-D', '--database', default=False, action='store_true',
@@ -240,6 +242,9 @@ def main(argv):
     args = argparser().parse_args(argv[1:])
     if args.ids is not None:
         args.ids = args.ids.split(',')
+    if args.phrase_types is not None:
+        args.phrases = True
+        args.phrase_types = args.phrase_types.split(',')
 
     name = args.output
     if not args.database:

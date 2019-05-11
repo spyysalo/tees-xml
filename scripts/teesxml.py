@@ -70,10 +70,10 @@ class Document(object):
     def assign_uids(self, next_free_idx=None):
         """Generate document-level unique IDs replacing non-unique TEES IDs."""
         if next_free_idx is None:
-            next_free_idx = defaultdict(lambda: 1)            
+            next_free_idx = defaultdict(lambda: 1)
         for s in self.sentences:
             s.assign_uids(next_free_idx)
-        
+
     @classmethod
     def from_xml(cls, element, options=None):
         recover = getattr(options, 'recover', False)
@@ -132,7 +132,7 @@ class Sentence(object):
             info('multiple tokens with max head_score, '+
                  'arbitrarily choosing last: {}'.format(max_scoring))
         return max_scoring[-1]
-            
+
     @classmethod
     def from_xml(cls, element, options=None):
         recover = getattr(options, 'recover', False)
@@ -154,6 +154,7 @@ class Sentence(object):
 
         no_tokens = getattr(options, 'no_tokens', False)
         no_phrases = not getattr(options, 'phrases', False)
+        phrase_types = getattr(options, 'phrase_types', None)
 
         tokens, phrases, dependencies = [], [], []
         for analyses in element.findall('analyses'):
@@ -176,6 +177,8 @@ class Sentence(object):
                     for phrase in parse.findall('phrase'):
                         try:
                             p = Phrase.from_xml(phrase, options)
+                            if phrase_types is not None and p.type not in phrase_types:
+                                continue
                             p.assign_text(text)
                             phrases.append(p)
                         except Exception as e:
@@ -336,11 +339,17 @@ class Phrase(Span):
     def __init__(self, id_, type_, offset):
         super(Phrase, self).__init__(offset)
         self.id = id_
-        self.type = 'Phrase-{}'.format(type_)
+        self.type = type_
         self.text = None    # need assign_text
 
     def assign_text(self, sentence_text):
         self.text = sentence_text[self.start:self.end]
+
+    def to_ann_lines(self, base_offset=0):
+        start = self.start + base_offset
+        end = self.end + base_offset
+        type_ = 'Phrase-{}'.format(self.type)
+        yield '{}\t{} {} {}\t{}'.format(self.uid, type_, start, end, self.text)
 
     @classmethod
     def from_xml(cls, element, options=None):
