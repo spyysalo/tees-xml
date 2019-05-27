@@ -4,6 +4,7 @@ import sys
 import os
 import errno
 
+from random import random
 from logging import error
 
 from sqlitedict import SqliteDict
@@ -16,6 +17,8 @@ def argparser():
                     help='include keys in output')
     ap.add_argument('-d', '--directory', default=None,
                     help='output directory')
+    ap.add_argument('-r', '--random', metavar='RATIO', default=None,
+                    type=float, help='output random RATIO of documents')
     ap.add_argument('-P', '--dir-prefix', type=int, default=None,
                     help='add subdirectory with document ID prefix')
     ap.add_argument('db', metavar='DB', help='database file')
@@ -71,6 +74,8 @@ def list_db(dbname, options):
     db = SqliteDict(dbname, flag='r', autocommit=False)
     if not options.keys:
         for k, v in db.iteritems():
+            if options.random is not None and options.random < random():
+                continue
             output(k, v.rstrip('\n'), options)
     else:
         for k in options.keys:
@@ -84,6 +89,10 @@ def list_db(dbname, options):
 
 def main(argv):
     args = argparser().parse_args(argv[1:])
+    if args.random is not None and not 0 < args.random < 1:
+        print('error: must have 0 < RATIO < 1 for --random',
+              file=sys.stderr)
+        return 1
     if not os.path.exists(args.db):
         print('no such file: {}'.format(args.db), file=sys.stderr)
         return 1
